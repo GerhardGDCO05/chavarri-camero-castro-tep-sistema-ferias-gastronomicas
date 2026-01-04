@@ -1,0 +1,217 @@
+version: "3.8"
+
+services:
+  # bases de datos:
+  postgres-auth:
+    image: postgres:15-alpine
+    env_file: .env
+    container_name: postgres-auth-ferias
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${AUTH_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres-auth:/var/lib/postgresql/data
+      - ./db-init/auth_service.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ferias-network
+
+  postgres-stalls:
+    image: postgres:15-alpine
+    env_file: .env
+    container_name: postgres-stalls-ferias
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${STALLS_DB}
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./data/postgres-stalls:/var/lib/postgresql/data
+      - ./db-init/stalls_service.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ferias-network
+
+  postgres-products:
+    image: postgres:15-alpine
+    env_file: .env
+    container_name: postgres-products-ferias
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${PRODUCTS_DB}
+    ports:
+      - "5434:5432"
+    volumes:
+      - ./data/postgres-products:/var/lib/postgresql/data
+      - ./db-init/products_service.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ferias-network
+
+  postgres-orders:
+    image: postgres:15-alpine
+    env_file: .env
+    container_name: postgres-orders-ferias
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${ORDERS_DB}
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./data/postgres-orders:/var/lib/postgresql/data
+      - ./db-init/orders_service.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ferias-network
+
+  # microservicios (ms)
+  ms-auth:
+    build:
+      context: ./ms-auth
+      dockerfile: Dockerfile
+    container_name: ms-auth-ferias
+    env_file: .env
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=development
+      - PORT=3001
+      - DB_HOST=postgres-auth
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=auth_service
+      - JWT_SECRET=mi-clave-secreta-jwt-para-ferias
+      - JWT_EXPIRES_IN=24h
+    volumes:
+      - ./ms-auth:/app
+      - /app/node_modules
+    networks:
+      - ferias-network
+    depends_on:
+      - postgres-auth
+    command: npm run start:dev
+
+  ms-puestos:
+    build:
+      context: ./ms-puestos
+      dockerfile: Dockerfile
+    container_name: ms-puestos-ferias
+    env_file: .env # ✅ AGREGAR ESTO
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - PORT=3002
+      - DB_HOST=postgres-stalls
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=stalls_service
+      - AUTH_SERVICE_HOST=ms-auth
+      - AUTH_SERVICE_PORT=3001
+    volumes:
+      - ./ms-puestos:/app
+      - /app/node_modules
+    networks:
+      - ferias-network
+    depends_on:
+      - postgres-stalls
+      - ms-auth
+    command: npm run start:dev
+
+  ms-productos:
+    build:
+      context: ./ms-productos
+      dockerfile: Dockerfile
+    container_name: ms-productos-ferias
+    env_file: .env
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - DB_HOST=postgres-products
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=products_service
+      - STALLS_SERVICE_HOST=ms-puestos
+      - STALLS_SERVICE_PORT=3002
+    volumes:
+      - ./ms-productos:/app
+      - /app/node_modules
+    networks:
+      - ferias-network
+    depends_on:
+      - postgres-products
+      - ms-puestos
+    command: npm run start:dev
+
+  ms-pedidos:
+    build:
+      context: ./ms-pedidos
+      dockerfile: Dockerfile
+    container_name: ms-pedidos-ferias
+    env_file: .env
+    ports:
+      - "3004:3004"
+    environment:
+      - NODE_ENV=development
+      - PORT=3004
+      - DB_HOST=postgres-orders
+      - DB_PORT=${DB_PORT}
+      - DB_USERNAME=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=orders_service
+      - AUTH_SERVICE_HOST=ms-auth
+      - AUTH_SERVICE_PORT=3001
+      - PRODUCTS_SERVICE_HOST=ms-productos
+      - PRODUCTS_SERVICE_PORT=3003
+      - STALLS_SERVICE_HOST=ms-puestos
+      - STALLS_SERVICE_PORT=3002
+    volumes:
+      - ./ms-pedidos:/app
+      - /app/node_modules
+    networks:
+      - ferias-network
+    depends_on:
+      - postgres-orders
+      - ms-auth
+      - ms-productos
+      - ms-puestos
+    command: npm run start:dev
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway-ferias
+    env_file: .env
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - AUTH_SERVICE_URL=http://ms-auth:3001
+      - STALLS_SERVICE_URL=http://ms-puestos:3002
+      - PRODUCTS_SERVICE_URL=http://ms-productos:3003
+      - ORDERS_SERVICE_URL=http://ms-pedidos:3004
+      # - JWT_SECRET=${JWT_SECRET:-default_jwt_secret_change_me}
+    volumes:
+      - ./api-gateway:/app
+      - /app/node_modules
+    networks:
+      - ferias-network
+    depends_on:
+      - ms-auth
+      - ms-puestos
+      - ms-productos
+      - ms-pedidos
+    command: npm run start:dev
+
+networks:
+  ferias-network:
+    driver: bridge
