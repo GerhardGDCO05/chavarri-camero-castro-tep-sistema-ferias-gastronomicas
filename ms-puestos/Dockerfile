@@ -1,4 +1,4 @@
-FROM node:18-alpine AS builder
+FROM node:alpine AS builder
 
 WORKDIR /app
 
@@ -9,7 +9,7 @@ COPY . .
 
 RUN npm run build
 
-FROM node:18-alpine
+FROM node:alpine
 
 WORKDIR /app
 
@@ -20,4 +20,8 @@ COPY --from=builder /app/package*.json ./
 EXPOSE 3000
 
 
-CMD ["node", "dist/main"]
+ADD https://github.com/ufoscout/docker-compose-wait/releases/download/2.2.1/wait /wait
+RUN chmod +x /wait
+
+## Launch the wait tool and then your application
+CMD /wait && npm start
