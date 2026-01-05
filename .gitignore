@@ -20,3 +20,4 @@ logs/
 # Sistema
 .DS_Store
 Thumbs.db
+data/
