@@ -49,4 +49,12 @@ export class AuthService {
       ? ResponseFactory.created(await this.generateJwt(register))
       : ResponseFactory.serverError();
   }
+  async validate(token: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync(token);
+      return ResponseFactory.ok(payload, 'Token válido');
+    } catch {
+      return ResponseFactory.unauthorized(null, 'Token inválido o expirado');
+    }
+  }
 }

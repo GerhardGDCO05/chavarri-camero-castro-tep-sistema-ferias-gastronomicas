@@ -23,4 +23,7 @@ export class AuthController {
     // if (!user) throw new UnauthorizedException('Credenciales inválidas');
     return this.authService.login({ password: dto.password, email: dto.email });
   }
+  @Version('1') @Post('validate') async validate(@Body('token') token: string) {
+    return this.authService.validate(token);
+  }
 }
