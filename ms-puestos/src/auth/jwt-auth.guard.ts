@@ -1,30 +1,52 @@
-import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { ResponseFactory } from '../responses/ResponseFactory.class'; // ajusta la ruta según tu proyecto
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly httpService: HttpService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
     if (!authHeader) {
-      throw new UnauthorizedException('Token no proporcionado');
+      request.res = ResponseFactory.unauthorized([], 'Token no proporcionado');
+      return false;
     }
 
-    // Simulación simple para desarrollo
-    // En producción, validarías el JWT real
     const token = authHeader.split(' ')[1];
-    
     if (!token) {
-      throw new UnauthorizedException('Token inválido');
+      request.res = ResponseFactory.unauthorized([], 'Token inválido');
+      return false;
     }
 
-    // Para desarrollo, asumimos que el token es válido
-    // y extraemos datos simulados del usuario
-    request.user = {
-      id: 'user-id-simulado',
-      role: 'emprendedor' // Cambiar según necesidad
-    };
+    try {
+      // llamada al microservicio de auth
+      const response = await firstValueFrom(
+        this.httpService.post('http://ms-auth:3001/api/v1/auth/validate', {
+          token,
+        }),
+      );
 
-    return true;
+      if (!('status' in response.data) || response.data.status !== 200) {
+        request.res = ResponseFactory.unauthorized(
+          [],
+          'Token inválido o expirado',
+        );
+        return false;
+      }
+
+      //inyecta el payload en request.user para usarlo en los controladores
+      request.user = response.data.data;
+      return true;
+    } catch (err) {
+      request.res = ResponseFactory.unauthorized(
+        [],
+        'Token inválido o expirado',
+      );
+      return false;
+    }
   }
 }

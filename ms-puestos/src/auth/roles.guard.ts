@@ -2,6 +2,7 @@ import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from './roles.decorator';
 import { Role } from './role.enum';
+import { ResponseFactory } from '../responses/ResponseFactory.class'; // ajusta la ruta según tu proyecto
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -17,14 +18,25 @@ export class RolesGuard implements CanActivate {
       return true;
     }
 
-    const { user } = context.switchToHttp().getRequest();
-    
-    // Simulación de usuario para desarrollo
-    // En producción, esto vendría del JWT validado
+    const request = context.switchToHttp().getRequest();
+    const { user } = request;
+
     if (!user) {
+      request.res = ResponseFactory.unauthorized([], 'Usuario no autenticado');
       return false;
     }
 
-    return requiredRoles.some((role) => user.role === role);
+    const hasRole = requiredRoles.some((role) => user.role === role);
+
+    if (!hasRole) {
+      request.res = ResponseFactory.forbidden(
+        [],
+        'No tienes permisos para acceder a este recurso',
+      );
+      return false;
+    }
+
+    return true;
   }
 }
+
